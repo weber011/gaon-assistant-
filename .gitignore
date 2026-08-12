@@ -1,0 +1,23 @@
+﻿# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+*.egg-info/
+temp_output.mp3
+
+# Node
+node_modules/
+.next/
+.turbo/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+*.log
+test_resp.json
