@@ -16,6 +16,9 @@ app.add_middleware(
 
 from api.chat import router as chat_router
 from api.voice import router as voice_router
+from api.crop import router as crop_router
+from api.profile import router as profile_router
+from api.reminders import router as reminders_router
 
 @app.get("/")
 def read_root():
@@ -23,4 +26,7 @@ def read_root():
 
 app.include_router(chat_router, prefix="/api")
 app.include_router(voice_router, prefix="/api")
+app.include_router(crop_router, prefix="/api")
+app.include_router(profile_router, prefix="/api")
+app.include_router(reminders_router, prefix="/api")
 

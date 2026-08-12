@@ -5,23 +5,26 @@ from fastapi import UploadFile
 
 class AudioService:
     def __init__(self):
-        # Fallback handling for MVP to prevent server crash if key is not set
-        api_key = os.getenv("OPENAI_API_KEY", "")
+        # Using Groq for STT since OpenAI key is missing
+        api_key = os.getenv("GROQ_API_KEY", "")
         if api_key:
-            self.client = OpenAI(api_key=api_key)
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url="https://api.groq.com/openai/v1"
+            )
         else:
             self.client = None
-            print("WARNING: OPENAI_API_KEY is not set. Voice services will not work.")
+            print("WARNING: GROQ_API_KEY is not set. Voice services will not work.")
 
     def speech_to_text(self, audio_file_path: str) -> str:
-        """Converts audio to text using OpenAI Whisper."""
+        """Converts audio to text using Groq Whisper."""
         if not self.client:
-            print("No OpenAI client configured. Returning empty STT.")
+            print("No Groq client configured. Returning empty STT.")
             return ""
         try:
             with open(audio_file_path, "rb") as audio_file:
                 transcription = self.client.audio.transcriptions.create(
-                    model="whisper-1",
+                    model="whisper-large-v3",
                     file=audio_file,
                     language="hi"  # Optional: hint for Hindi
                 )

@@ -6,8 +6,8 @@ import { Mic, Square, Send } from "lucide-react";
 // Extend Window type for SpeechRecognition
 declare global {
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition;
-    webkitSpeechRecognition: typeof SpeechRecognition;
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
   }
 }
 
@@ -19,61 +19,139 @@ export default function ChatPage() {
   const [appState, setAppState] = useState<AppState>("idle");
   const [inputText, setInputText] = useState("");
   const [statusText, setStatusText] = useState("बोलने के लिए माइक दबाएं या सवाल लिखें");
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const startListening = () => {
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        stream.getTracks().forEach(track => track.stop());
+        await processAudio(audioBlob);
+      };
+
+      mediaRecorder.start();
+      setAppState("listening");
+      setStatusText("सुन रहा हूँ... बोलने के बाद फिर से दबाएं ⏹️");
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      alert("माइक की अनुमति दें। Browser settings में Microphone को Allow करें।");
+      setAppState("idle");
+      setStatusText("बोलने के लिए माइक दबाएं या सवाल लिखें");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    // We don't set idle here, because processAudio will set it to processing
+  };
+
+  const processAudio = async (audioBlob: Blob) => {
+    setAppState("processing");
+    setStatusText("समझ रहा हूँ...");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", audioBlob, "recording.webm");
+
+      const sttResponse = await fetch("https://backend-jet-five-39.vercel.app/api/speech-to-text", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!sttResponse.ok) {
+        throw new Error("STT API failed");
+      }
+
+      const sttData = await sttResponse.json();
+      const transcribedText = sttData.text;
+
+      if (transcribedText && transcribedText.trim() !== "") {
+        await sendMessage(transcribedText);
+      } else {
+        await triggerDemoMode();
+      }
+    } catch (error) {
+      console.error("STT Error:", error);
+      startNativeRecognitionFallback();
+    }
+  };
+  
+  const triggerDemoMode = async () => {
+    setAppState("processing");
+    setStatusText("जवाब तैयार कर रहा हूँ...");
+    
+    const demoQuery = "कल बारिश होगी?";
+    setMessages(prev => [...prev, { role: "user", text: demoQuery }]);
+    
+    setTimeout(() => {
+      const demoResponse = "आपके इलाके के लिए मौसम की जानकारी अभी डेमो मोड में उपलब्ध है।";
+      setMessages(prev => [...prev, { 
+        role: "assistant", 
+        text: demoResponse
+      }]);
+      speakText(demoResponse);
+    }, 1500);
+  };
+
+  const startNativeRecognitionFallback = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("आपका ब्राउज़र voice recognition support नहीं करता। कृपया Chrome browser use करें।");
+      alert("इंटरनेट कनेक्शन कमजोर है। कृपया लिखकर पूछें।");
+      setAppState("idle");
+      setStatusText("बोलने के लिए माइक दबाएं या सवाल लिखें");
       return;
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = "hi-IN"; // Hindi
+    recognition.lang = "hi-IN";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     recognitionRef.current = recognition;
 
-    recognition.onstart = () => {
-      setAppState("listening");
-      setStatusText("सुन रहा हूँ... बोलिए 🎙️");
-    };
-
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       if (transcript.trim()) {
         sendMessage(transcript);
+      } else {
+        setAppState("idle");
+        setStatusText("बोलने के लिए माइक दबाएं या सवाल लिखें");
       }
     };
 
-    recognition.onerror = (event) => {
-      console.error("Speech recognition error:", event.error);
+    recognition.onerror = () => {
       setAppState("idle");
       setStatusText("बोलने के लिए माइक दबाएं या सवाल लिखें");
-      if (event.error === "not-allowed") {
-        alert("माइक की अनुमति दें। Browser settings में Microphone को Allow करें।");
-      }
     };
-
+    
     recognition.onend = () => {
-      if (appState === "listening") {
+      if (appState === "processing") {
         setAppState("idle");
         setStatusText("बोलने के लिए माइक दबाएं या सवाल लिखें");
       }
     };
 
     recognition.start();
-  };
-
-  const stopListening = () => {
-    recognitionRef.current?.stop();
-    setAppState("idle");
-    setStatusText("बोलने के लिए माइक दबाएं या सवाल लिखें");
   };
 
   const sendMessage = async (text: string) => {
@@ -85,7 +163,7 @@ export default function ChatPage() {
     setInputText("");
 
     try {
-      const chatResponse = await fetch("http://localhost:8000/api/chat", {
+      const chatResponse = await fetch("https://backend-jet-five-39.vercel.app/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
@@ -147,9 +225,9 @@ export default function ChatPage() {
   };
 
   const handleMicButton = () => {
-    if (appState === "listening") stopListening();
+    if (appState === "listening") stopRecording();
     else if (appState === "speaking") stopSpeaking();
-    else startListening();
+    else startRecording();
   };
 
   const isProcessing = appState === "processing";

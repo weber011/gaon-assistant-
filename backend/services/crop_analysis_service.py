@@ -9,15 +9,7 @@ def analyze_crop_disease(intent_data: IntentData, user_id: str):
     
     # In a full flow, we'd take the image and pass it to Gemini Vision here
     return {
+        "action_required": "upload_photo",
         "crop": crop,
-        "possible_problem": "Early Blight",
-        "confidence": 0.87,
-        "symptoms": intent_data.symptoms or ["Dark spots on leaves", "Yellowing leaves"],
-        "recommendations": [
-            "Remove severely affected leaves",
-            "Improve airflow",
-            "Avoid excessive moisture"
-        ],
-        "disclaimer": True,
-        "is_demo_data": True
+        "message": f"जी, {crop} के पत्ते या फल की एक साफ फोटो भेजिए ताकि मैं जांच कर सकूँ।"
     }
